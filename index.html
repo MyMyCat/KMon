@@ -62,9 +62,8 @@
         .stats { background: #e7f3ff; padding: 8px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 15px; text-align: center; }
         .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin-bottom: 16px; border-radius: 8px; font-size: 12px; }
         .push-btn { background: #48bb78; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; margin-top: 10px; cursor: pointer; width: 100%; }
-        .loading { text-align: center; padding: 20px; color: #667eea; }
-        .error { color: #f56565; background: #fed7d7; padding: 10px; border-radius: 8px; margin-top: 10px; }
-        .sync-info { font-size: 11px; color: #888; text-align: center; margin-top: 8px; }
+        .loading { text-align: center; padding: 20px; color: #667eea; font-weight: bold; }
+        .log { background: #f0f0f0; padding: 10px; border-radius: 8px; font-size: 11px; margin-top: 10px; max-height: 150px; overflow-y: auto; display: none; }
     </style>
 </head>
 <body>
@@ -74,8 +73,8 @@
             <p class="subtitle">Кроссплатформенный монитор с уведомлениями</p>
         </div>
         
-        <div class="warning" id="proxyWarning">
-            ⚠️ Используется публичный прокси-сервер. При ошибках обновите страницу.
+        <div class="warning">
+            ⚠️ Для работы требуется интернет. При первом запуске нажмите "Проверить сейчас".
         </div>
         
         <div class="card">
@@ -94,18 +93,13 @@
                 <button onclick="clearViewed()" class="btn btn-warning">✅ Пометить как просмотренные</button>
                 <button onclick="resetAll()" class="btn btn-danger">🗑️ Полный сброс</button>
             </div>
-            <div class="button-group" style="margin-top: 10px;">
-                <button onclick="exportData()" class="btn btn-primary">📤 Экспорт</button>
-                <button onclick="importData()" class="btn btn-secondary">📥 Импорт</button>
-                <input type="file" id="importFile" style="display:none" accept=".json">
-            </div>
             <button id="enablePush" class="push-btn">🔔 Включить уведомления</button>
         </div>
         
         <div class="status-bar">
             <span>📊 Статус: <span id="totalCount">0</span> объявлений</span>
             <span class="auto-refresh">🔄 Интервал: <span id="intervalDisplay">5</span> мин</span>
-            <span id="newBadge" class="new-alert" style="display:none">🆕 НОВЫЕ ОБЪЯВЛЕНИЯ</span>
+            <span id="newBadge" class="new-alert" style="display:none">🆕 НОВЫЕ</span>
         </div>
         
         <div class="card">
@@ -115,10 +109,13 @@
                 <div class="empty-state">Нажмите "Проверить сейчас"</div>
             </div>
         </div>
+        
+        <div class="log" id="logPanel"></div>
     </div>
 
     <script>
-        // ========== КОНФИГУРАЦИЯ ==========
+        // ========== ПРОСТАЯ ВЕРСИЯ БЕЗ СЛОЖНЫХ ПРОКСИ ==========
+        
         let config = {
             keywords: ['iPhone'],
             interval: 5,
@@ -129,47 +126,47 @@
         let notificationEnabled = false;
         let checkInterval = null;
         
-        // ========== ПРОКСИ ДЛЯ ОБХОДА CORS ==========
-        // Используем несколько прокси для надёжности
-        const PROXIES = [
-            'https://api.allorigins.win/raw?url=',
-            'https://cors-anywhere.herokuapp.com/',
-            'https://thingproxy.freeboard.io/fetch/'
-        ];
-        
-        let currentProxyIndex = 0;
-        
-        async function fetchWithProxy(url) {
-            for (let i = 0; i < PROXIES.length; i++) {
-                const proxyIndex = (currentProxyIndex + i) % PROXIES.length;
-                const proxy = PROXIES[proxyIndex];
-                const proxyUrl = proxy + encodeURIComponent(url);
-                
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000);
-                    
-                    const response = await fetch(proxyUrl, {
-                        signal: controller.signal,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        }
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (response.ok) {
-                        currentProxyIndex = proxyIndex;
-                        return await response.text();
-                    }
-                } catch (e) {
-                    console.log(`Прокси ${proxy} не работает:`, e);
+        // Логирование
+        function addLog(msg) {
+            console.log(msg);
+            const logPanel = document.getElementById('logPanel');
+            logPanel.style.display = 'block';
+            logPanel.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            logPanel.scrollTop = logPanel.scrollHeight;
+            setTimeout(() => {
+                if (logPanel.children.length > 20) {
+                    logPanel.innerHTML = '';
                 }
-            }
-            throw new Error('Все прокси недоступны');
+            }, 5000);
         }
         
-        // ========== ПАРСИНГ ==========
+        // Парсинг через JSONP-подобный прокси
+        async function fetchViaCorsProxy(url) {
+            // Используем бесплатный CORS прокси
+            const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
+            
+            addLog(`Запрос: ${url}`);
+            
+            try {
+                const response = await fetch(proxyUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const text = await response.text();
+                addLog(`Получено ${text.length} байт`);
+                return text;
+            } catch (error) {
+                addLog(`Ошибка: ${error.message}`);
+                throw error;
+            }
+        }
+        
         function extractCityFromUrl(url) {
             const match = url.match(/https?:\/\/([^.]+)\.komissionki\.ru/);
             return match ? match[1] : '';
@@ -179,16 +176,16 @@
             const url = `https://komissionki.ru/catalog/search?search=${encodeURIComponent(keyword)}`;
             
             try {
-                console.log(`Парсим: ${keyword}`);
-                const html = await fetchWithProxy(url);
+                const html = await fetchViaCorsProxy(url);
                 
+                // Создаём DOM из HTML
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
                 const items = [];
                 const cards = doc.querySelectorAll('.card');
                 
-                console.log(`Найдено карточек для "${keyword}": ${cards.length}`);
+                addLog(`Найдено карточек для "${keyword}": ${cards.length}`);
                 
                 for (const card of cards) {
                     const itemId = card.getAttribute('data-id');
@@ -221,13 +218,15 @@
                 
                 return items;
             } catch (error) {
-                console.error(`Ошибка парсинга ${keyword}:`, error);
+                addLog(`Ошибка парсинга "${keyword}": ${error.message}`);
                 return [];
             }
         }
         
-        // ========== ОСНОВНАЯ ФУНКЦИЯ ПРОВЕРКИ ==========
+        // ОСНОВНАЯ ФУНКЦИЯ
         async function checkNow() {
+            addLog('====== НАЧАЛО ПРОВЕРКИ ======');
+            
             const itemsList = document.getElementById('itemsList');
             itemsList.innerHTML = '<div class="loading">🔍 Проверяем объявления...</div>';
             
@@ -235,11 +234,12 @@
             let totalFound = 0;
             
             for (const keyword of config.keywords) {
+                addLog(`Проверяем keyword: "${keyword}"`);
                 const items = await parseKeyword(keyword);
                 totalFound += items.length;
                 
                 for (const item of items) {
-                    const key = `${item.id}_${btoa(keyword)}`;
+                    const key = `${item.id}_${keyword}`;
                     
                     if (!history[key]) {
                         history[key] = {
@@ -253,79 +253,52 @@
                             viewed: false
                         };
                         newItemsCount++;
+                        addLog(`НОВОЕ: ${item.title} (${item.price})`);
                         
-                        // Показываем уведомление для нового
+                        // Уведомление
                         if (notificationEnabled && Notification.permission === 'granted') {
-                            showNotification(item.title, `${item.price} | ${item.city}`, item.url);
+                            const notification = new Notification('🛒 Новое объявление!', {
+                                body: `${item.title}\n💰 ${item.price} | ${item.city}`,
+                                icon: 'https://komissionki.ru/favicon.ico'
+                            });
+                            notification.onclick = () => window.open(item.url, '_blank');
                         }
                     }
                 }
             }
             
             config.lastCheck = new Date().toISOString();
+            
+            // Сохраняем
             localStorage.setItem('komi_config', JSON.stringify(config));
             localStorage.setItem('komi_history', JSON.stringify(history));
             
+            // Обновляем интерфейс
             renderItems();
             updateStatus();
             
-            if (newItemsCount > 0) {
-                document.getElementById('newBadge').style.display = 'inline-block';
-                document.title = `(${newItemsCount}) Новые!`;
-                setTimeout(() => {
-                    document.getElementById('newBadge').style.display = 'none';
-                    document.title = 'Монитор Komissionki';
-                }, 10000);
-            }
-            
-            console.log(`Всего найдено: ${totalFound}, Новых: ${newItemsCount}`);
+            addLog(`ИТОГО: найдено ${totalFound}, новых ${newItemsCount}`);
+            addLog('====== ПРОВЕРКА ЗАВЕРШЕНА ======');
             
             if (totalFound === 0 && config.keywords.length > 0) {
-                itemsList.innerHTML = '<div class="empty-state">⚠️ Ничего не найдено.<br>Проверьте ключевые слова или повторите попытку.</div>';
+                itemsList.innerHTML = '<div class="empty-state">⚠️ Ничего не найдено.<br>Проверьте ключевые слова или интернет.</div>';
+            }
+            
+            if (newItemsCount > 0) {
+                document.getElementById('newBadge').style.display = 'inline-block';
+                setTimeout(() => {
+                    document.getElementById('newBadge').style.display = 'none';
+                }, 10000);
             }
         }
         
-        // ========== УВЕДОМЛЕНИЯ ==========
-        function showNotification(title, body, url) {
-            if (!('Notification' in window) || Notification.permission !== 'granted') return;
-            
-            const notification = new Notification('🛒 Новое объявление!', {
-                body: `${title}\n💰 ${body}`,
-                icon: 'https://komissionki.ru/favicon.ico',
-                vibrate: [200, 100, 200],
-                requireInteraction: true
-            });
-            
-            notification.onclick = function() {
-                window.open(url, '_blank');
-                notification.close();
-            };
-        }
-        
-        async function enableNotifications() {
-            if (!('Notification' in window)) {
-                alert('Ваш браузер не поддерживает уведомления');
-                return;
-            }
-            
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                notificationEnabled = true;
-                document.getElementById('enablePush').textContent = '✅ Уведомления включены';
-                document.getElementById('enablePush').style.background = '#38a169';
-                alert('Уведомления включены!');
-            } else {
-                alert('Разрешите уведомления в настройках браузера');
-            }
-        }
-        
-        // ========== УПРАВЛЕНИЕ ДАННЫМИ ==========
+        // Отрисовка списка
         function renderItems() {
             const container = document.getElementById('itemsList');
             const unviewed = Object.values(history).filter(item => !item.viewed);
             
             if (unviewed.length === 0) {
-                container.innerHTML = '<div class="empty-state">📭 Нет новых объявлений<br><small>Нажмите "Проверить сейчас"</small></div>';
+                container.innerHTML = '<div class="empty-state">📭 Нет новых объявлений</div>';
                 return;
             }
             
@@ -344,18 +317,28 @@
         
         function updateStatus() {
             const total = Object.keys(history).length;
-            const unviewed = Object.values(history).filter(item => !item.viewed).length;
             document.getElementById('totalCount').innerText = total;
             
             if (config.lastCheck) {
                 const date = new Date(config.lastCheck);
                 document.getElementById('lastCheck').innerText = date.toLocaleString('ru-RU');
             }
+            
+            const unviewed = Object.values(history).filter(item => !item.viewed).length;
+            if (unviewed > 0) {
+                document.title = `(${unviewed}) Монитор`;
+            } else {
+                document.title = 'Монитор Komissionki';
+            }
         }
         
         function saveSettings() {
             const keywordsStr = document.getElementById('keywords').value;
             const keywords = keywordsStr.split(',').map(k => k.trim()).filter(k => k);
+            if (keywords.length === 0) {
+                alert('Введите хотя бы одно ключевое слово');
+                return;
+            }
             config.keywords = keywords;
             config.interval = parseInt(document.getElementById('interval').value);
             document.getElementById('intervalDisplay').innerText = config.interval;
@@ -368,6 +351,7 @@
             }
             
             alert('Настройки сохранены!');
+            addLog('Настройки сохранены: ' + keywords.join(', '));
         }
         
         function clearViewed() {
@@ -377,56 +361,22 @@
             localStorage.setItem('komi_history', JSON.stringify(history));
             renderItems();
             updateStatus();
+            addLog('Все объявления помечены как просмотренные');
         }
         
         function resetAll() {
-            if (confirm('Сбросить ВСЮ историю? Все объявления будут удалены.')) {
+            if (confirm('Сбросить ВСЁ? Все объявления и настройки будут удалены.')) {
                 history = {};
-                localStorage.setItem('komi_history', JSON.stringify(history));
+                config.keywords = ['iPhone'];
+                config.interval = 5;
+                document.getElementById('keywords').value = 'iPhone';
+                document.getElementById('interval').value = 5;
+                localStorage.removeItem('komi_config');
+                localStorage.removeItem('komi_history');
                 renderItems();
                 updateStatus();
+                addLog('Полный сброс выполнен');
             }
-        }
-        
-        function exportData() {
-            const data = { config, history };
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `komi_backup_${new Date().toISOString().slice(0,19)}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        function importData() {
-            const input = document.getElementById('importFile');
-            input.onchange = (e) => {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const data = JSON.parse(event.target.result);
-                        if (data.config) {
-                            config = data.config;
-                            localStorage.setItem('komi_config', JSON.stringify(config));
-                            document.getElementById('keywords').value = config.keywords.join(', ');
-                            document.getElementById('interval').value = config.interval;
-                        }
-                        if (data.history) {
-                            history = data.history;
-                            localStorage.setItem('komi_history', JSON.stringify(history));
-                        }
-                        renderItems();
-                        updateStatus();
-                        alert('Данные импортированы!');
-                    } catch (err) {
-                        alert('Ошибка импорта: неверный формат файла');
-                    }
-                };
-                reader.readAsText(file);
-            };
-            input.click();
         }
         
         function loadData() {
@@ -437,23 +387,42 @@
                     document.getElementById('keywords').value = config.keywords.join(', ');
                     document.getElementById('interval').value = config.interval;
                     document.getElementById('intervalDisplay').innerText = config.interval;
-                } catch(e) {}
+                } catch(e) { console.error(e); }
             }
             
             const savedHistory = localStorage.getItem('komi_history');
             if (savedHistory) {
                 try {
                     history = JSON.parse(savedHistory);
-                } catch(e) {}
+                } catch(e) { console.error(e); }
             }
             
             renderItems();
             updateStatus();
             
-            // Запускаем интервал
+            // Запускаем автоматическую проверку
             if (checkInterval) clearInterval(checkInterval);
             if (config.interval > 0) {
                 checkInterval = setInterval(checkNow, config.interval * 60 * 1000);
+            }
+            
+            addLog('Приложение загружено');
+        }
+        
+        async function enableNotifications() {
+            if (!('Notification' in window)) {
+                alert('Ваш браузер не поддерживает уведомления');
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                notificationEnabled = true;
+                document.getElementById('enablePush').textContent = '✅ Уведомления включены';
+                document.getElementById('enablePush').style.background = '#38a169';
+                alert('Уведомления включены!');
+                addLog('Уведомления разрешены');
+            } else {
+                alert('Разрешите уведомления в настройках браузера');
             }
         }
         
@@ -467,7 +436,7 @@
             });
         }
         
-        // ========== ЗАПУСК ==========
+        // Привязываем обработчики
         document.getElementById('enablePush').addEventListener('click', enableNotifications);
         
         if (Notification.permission === 'granted') {
@@ -476,6 +445,7 @@
             document.getElementById('enablePush').style.background = '#38a169';
         }
         
+        // Запуск
         loadData();
     </script>
 </body>
