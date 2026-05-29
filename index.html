@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Монитор Komissionki</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 16px;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { color: white; font-size: 28px; margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .subtitle { color: rgba(255,255,255,0.9); font-size: 14px; }
+        .card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 18px; margin-bottom: 16px; color: #333; border-left: 4px solid #667eea; padding-left: 12px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #666; font-weight: 500; font-size: 14px; }
+        .form-group input[type="text"], .form-group input[type="number"] {
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 12px; font-size: 16px;
+        }
+        .button-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-secondary { background: #48bb78; color: white; }
+        .btn-warning { background: #ed8936; color: white; }
+        .btn-danger { background: #f56565; color: white; }
+        .status-bar { background: white; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .auto-refresh { background: #e7f3ff; padding: 4px 8px; border-radius: 8px; font-size: 12px; color: #0066cc; }
+        .new-alert { background: #48bb78; color: white; padding: 4px 8px; border-radius: 8px; font-size: 12px; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .items-list { max-height: 500px; overflow-y: auto; }
+        .item-card {
+            background: #f8f9fa;
+            border-left: 4px solid #48bb78;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .item-card:hover { transform: translateX(4px); background: #f0f2f5; }
+        .item-keyword { display: inline-block; background: #667eea; color: white; padding: 2px 10px; border-radius: 20px; font-size: 11px; margin-bottom: 10px; }
+        .item-title { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 6px; }
+        .item-price { color: #48bb78; font-size: 18px; font-weight: 700; margin: 6px 0; }
+        .item-city { color: #888; font-size: 13px; margin: 4px 0; }
+        .item-date { color: #aaa; font-size: 11px; margin-top: 8px; }
+        .empty-state { text-align: center; padding: 40px; color: #aaa; }
+        .stats { background: #e7f3ff; padding: 8px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 15px; text-align: center; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin-bottom: 16px; border-radius: 8px; font-size: 12px; }
+        .push-btn { background: #48bb78; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; margin-top: 10px; cursor: pointer; width: 100%; }
+        .push-enabled { background: #38a169; }
+        .push-disabled { background: #718096; }
+        .sync-info { font-size: 11px; color: #888; text-align: center; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛒 Монитор Komissionki</h1>
+            <p class="subtitle">Кроссплатформенный монитор с уведомлениями</p>
+        </div>
+        
+        <div class="warning">
+            💾 Данные хранятся в вашем браузере (localStorage).<br>
+            🔄 Синхронизация между устройствами — через экспорт/импорт.
+        </div>
+        
+        <div class="card">
+            <h2>📝 Настройки</h2>
+            <div class="form-group">
+                <label>Ключевые слова (через запятую):</label>
+                <input type="text" id="keywords" placeholder="iPhone, ваза хрусталь, часы детские">
+            </div>
+            <div class="form-group">
+                <label>⏱️ Интервал проверки (минуты):</label>
+                <input type="number" id="interval" value="5" min="1" max="60">
+            </div>
+            <div class="button-group">
+                <button onclick="saveSettings()" class="btn btn-primary">💾 Сохранить</button>
+                <button onclick="checkNow()" class="btn btn-secondary">🔍 Проверить сейчас</button>
+                <button onclick="clearViewed()" class="btn btn-warning">✅ Пометить как просмотренные</button>
+                <button onclick="resetAll()" class="btn btn-danger" onclick="return confirm('Сбросить всё?')">🗑️ Полный сброс</button>
+            </div>
+            <div class="button-group" style="margin-top: 10px;">
+                <button onclick="exportData()" class="btn btn-primary">📤 Экспорт</button>
+                <button onclick="importData()" class="btn btn-secondary">📥 Импорт</button>
+                <input type="file" id="importFile" style="display:none" accept=".json">
+            </div>
+            <button id="enablePush" class="push-btn">🔔 Включить уведомления</button>
+        </div>
+        
+        <div class="status-bar">
+            <span>📊 Статус: <span id="totalCount">0</span> объявлений</span>
+            <span class="auto-refresh">🔄 Интервал: <span id="intervalDisplay">5</span> мин</span>
+            <span id="newBadge" class="new-alert" style="display:none">🆕 НОВЫЕ ОБЪЯВЛЕНИЯ</span>
+        </div>
+        
+        <div class="card">
+            <h2>📦 Актуальные объявления</h2>
+            <div class="stats">🕐 Последняя проверка: <span id="lastCheck">—</span></div>
+            <div class="items-list" id="itemsList">
+                <div class="empty-state">Загружаем...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== КОНФИГУРАЦИЯ ==========
+        let config = {
+            keywords: ['iPhone'],
+            interval: 5,
+            lastCheck: null
+        };
+        
+        let history = {};  // { key: { id, title, price, url, city, keyword, found_at, viewed } }
+        let notificationEnabled = false;
+        let checkInterval = null;
+        
+        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+        function loadData() {
+            const savedConfig = localStorage.getItem('komi_config');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+                document.getElementById('keywords').value = config.keywords.join(', ');
+                document.getElementById('interval').value = config.interval;
+                document.getElementById('intervalDisplay').innerText = config.interval;
+            }
+            
+            const savedHistory = localStorage.getItem('komi_history');
+            if (savedHistory) {
+                history = JSON.parse(savedHistory);
+            }
+            
+            renderItems();
+            updateStatus();
+            
+            // Запускаем интервал проверки
+            if (checkInterval) clearInterval(checkInterval);
+            checkInterval = setInterval(checkNow, config.interval * 60 * 1000);
+        }
+        
+        function saveSettings() {
+            const keywordsStr = document.getElementById('keywords').value;
+            const keywords = keywordsStr.split(',').map(k => k.trim()).filter(k => k);
+            config.keywords = keywords;
+            config.interval = parseInt(document.getElementById('interval').value);
+            document.getElementById('intervalDisplay').innerText = config.interval;
+            
+            localStorage.setItem('komi_config', JSON.stringify(config));
+            
+            // Перезапускаем интервал
+            if (checkInterval) clearInterval(checkInterval);
+            checkInterval = setInterval(checkNow, config.interval * 60 * 1000);
+            
+            alert('Настройки сохранены!');
+        }
+        
+        // ========== ПАРСИНГ ==========
+        function extractCityFromUrl(url) {
+            const match = url.match(/https?:\/\/([^.]+)\.komissionki\.ru/);
+            return match ? match[1] : '';
+        }
+        
+        async function parseKeyword(keyword) {
+            const url = `https://komissionki.ru/catalog/search?search=${encodeURIComponent(keyword)}`;
+            
+            try {
+                // Используем CORS-прокси для обхода ограничений
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                const html = await response.text();
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                const items = [];
+                const cards = doc.querySelectorAll('.card');
+                
+                for (const card of cards) {
+                    const itemId = card.getAttribute('data-id');
+                    if (!itemId) continue;
+                    
+                    const title = card.getAttribute('data-title') || 'Товар';
+                    
+                    const priceElem = card.querySelector('.card__cost_black');
+                    const price = priceElem ? priceElem.innerText.trim() : '';
+                    
+                    let linkElem = card.querySelector('a[href]');
+                    let link = linkElem ? linkElem.getAttribute('href') : '';
+                    if (link && !link.startsWith('http')) {
+                        link = 'https://komissionki.ru' + link;
+                    }
+                    
+                    if (!link) continue;
+                    
+                    const city = extractCityFromUrl(link);
+                    
+                    items.push({
+                        id: itemId,
+                        title: title,
+                        price: price,
+                        url: link,
+                        city: city,
+                        keyword: keyword
+                    });
+                }
+                
+                return items;
+            } catch (error) {
+                console.error(`Ошибка парсинга ${keyword}:`, error);
+                return [];
+            }
+        }
+        
+        async function checkNow() {
+            console.log('Проверка новых объявлений...');
+            let newItemsCount = 0;
+            
+            for (const keyword of config.keywords) {
+                const items = await parseKeyword(keyword);
+                
+                for (const item of items) {
+                    const key = `${item.id}_${btoa(keyword)}`;
+                    
+                    if (!history[key]) {
+                        history[key] = {
+                            id: item.id,
+                            title: item.title,
+                            price: item.price,
+                            url: item.url,
+                            city: item.city,
+                            keyword: keyword,
+                            found_at: new Date().toISOString(),
+                            viewed: false
+                        };
+                        newItemsCount++;
+                        
+                        // Показываем уведомление
+                        if (notificationEnabled && Notification.permission === 'granted') {
+                            showNotification(item.title, `${item.price} - ${item.city}`, item.url);
+                        }
+                    }
+                }
+            }
+            
+            config.lastCheck = new Date().toISOString();
+            localStorage.setItem('komi_config', JSON.stringify(config));
+            localStorage.setItem('komi_history', JSON.stringify(history));
+            
+            renderItems();
+            updateStatus();
+            
+            if (newItemsCount > 0) {
+                document.getElementById('newBadge').style.display = 'inline-block';
+                setTimeout(() => {
+                    document.getElementById('newBadge').style.display = 'none';
+                }, 5000);
+            }
+            
+            console.log(`Найдено новых: ${newItemsCount}`);
+        }
+        
+        // ========== УВЕДОМЛЕНИЯ ==========
+        function showNotification(title, body, url) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            
+            const notification = new Notification('🛒 Новое объявление!', {
+                body: `${title}\n💰 ${body}`,
+                icon: 'https://komissionki.ru/favicon.ico',
+                vibrate: [200, 100, 200],
+                requireInteraction: true
+            });
+            
+            notification.onclick = function() {
+                window.open(url, '_blank');
+                notification.close();
+            };
+        }
+        
+        async function enableNotifications() {
+            if (!('Notification' in window)) {
+                alert('Ваш браузер не поддерживает уведомления');
+                return;
+            }
+            
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                notificationEnabled = true;
+                document.getElementById('enablePush').textContent = '✅ Уведомления включены';
+                document.getElementById('enablePush').style.background = '#38a169';
+                alert('Уведомления включены!');
+            } else {
+                alert('Разрешите уведомления в настройках браузера');
+            }
+        }
+        
+        // ========== УПРАВЛЕНИЕ ДАННЫМИ ==========
+        function renderItems() {
+            const container = document.getElementById('itemsList');
+            const unviewed = Object.values(history).filter(item => !item.viewed);
+            
+            if (unviewed.length === 0) {
+                container.innerHTML = '<div class="empty-state">📭 Нет новых объявлений<br><small>Нажмите "Проверить сейчас"</small></div>';
+                return;
+            }
+            
+            unviewed.sort((a, b) => new Date(b.found_at) - new Date(a.found_at));
+            
+            container.innerHTML = unviewed.map(item => `
+                <div class="item-card" onclick="window.open('${item.url}', '_blank');">
+                    <div class="item-keyword">🔑 По запросу: ${escapeHtml(item.keyword)}</div>
+                    <div class="item-title">${escapeHtml(item.title)}</div>
+                    <div class="item-price">💰 ${escapeHtml(item.price)}</div>
+                    <div class="item-city">📍 ${escapeHtml(item.city)}</div>
+                    <div class="item-date">📅 Найдено: ${new Date(item.found_at).toLocaleString('ru-RU')}</div>
+                </div>
+            `).join('');
+        }
+        
+        function updateStatus() {
+            const total = Object.keys(history).length;
+            const unviewed = Object.values(history).filter(item => !item.viewed).length;
+            document.getElementById('totalCount').innerText = total;
+            
+            if (config.lastCheck) {
+                const date = new Date(config.lastCheck);
+                document.getElementById('lastCheck').innerText = date.toLocaleString('ru-RU');
+            }
+            
+            if (unviewed > 0) {
+                document.getElementById('newBadge').style.display = 'inline-block';
+                document.title = `(${unviewed}) Монитор Komissionki`;
+            } else {
+                document.getElementById('newBadge').style.display = 'none';
+                document.title = 'Монитор Komissionki';
+            }
+        }
+        
+        function clearViewed() {
+            for (const key in history) {
+                history[key].viewed = true;
+            }
+            localStorage.setItem('komi_history', JSON.stringify(history));
+            renderItems();
+            updateStatus();
+        }
+        
+        function resetAll() {
+            if (confirm('Сбросить ВСЮ историю? Все объявления будут удалены.')) {
+                history = {};
+                localStorage.setItem('komi_history', JSON.stringify(history));
+                renderItems();
+                updateStatus();
+            }
+        }
+        
+        function exportData() {
+            const data = { config, history };
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `komi_backup_${new Date().toISOString().slice(0,19)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function importData() {
+            const input = document.getElementById('importFile');
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const data = JSON.parse(event.target.result);
+                    if (data.config) {
+                        config = data.config;
+                        localStorage.setItem('komi_config', JSON.stringify(config));
+                        document.getElementById('keywords').value = config.keywords.join(', ');
+                        document.getElementById('interval').value = config.interval;
+                    }
+                    if (data.history) {
+                        history = data.history;
+                        localStorage.setItem('komi_history', JSON.stringify(history));
+                    }
+                    renderItems();
+                    updateStatus();
+                    alert('Данные импортированы!');
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        // ========== ЗАПУСК ==========
+        document.getElementById('enablePush').addEventListener('click', enableNotifications);
+        
+        // Проверяем разрешение на уведомления при загрузке
+        if (Notification.permission === 'granted') {
+            notificationEnabled = true;
+            document.getElementById('enablePush').textContent = '✅ Уведомления включены';
+            document.getElementById('enablePush').style.background = '#38a169';
+        }
+        
+        loadData();
+        
+        // Первая проверка через 5 секунд после загрузки
+        setTimeout(checkNow, 5000);
+    </script>
+</body>
+</html>
